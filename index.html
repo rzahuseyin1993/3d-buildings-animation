@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>3D-Building-Animation</title>
+    <meta
+      property="og:description"
+      content="Add an icon to the map from an external URL and use it in a symbol layer."
+    />
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/maplibre-gl@3.5.2/dist/maplibre-gl.css"
+    />
+    <script src="https://unpkg.com/maplibre-gl@3.5.2/dist/maplibre-gl.js"></script>
+    <style>
+      body {
+        margin: 0;
+        padding: 0;
+      }
+
+      html,
+      body,
+      #map {
+        height: 100%;
+      }
+
+      .map-overlay {
+        position: absolute;
+        top: 10px;
+        left: 10px;
+        background: rgba(255, 255, 255, 0.7);
+        padding: 5px;
+        border-radius: 3px;
+        font-size: 16px;
+      }
+    </style>
+  </head>
+
+  <body>
+    <div id="map"></div>
+    <div id="zoom-level" class="map-overlay">Zoom Level:</div>
+
+    <script>
+      const map = new maplibregl.Map({
+        container: "map",
+        style:
+          "https://map.vizualtravel.com/styles/osm-bright-gl-style/style.json",
+        center: [-74.009, 40.7128],
+        zoom: 13.5,
+        pitch: 30,
+      });
+
+      const MAX_HEIGHT = 850;
+      const MIN_ZOOM = 14;
+      const ANIMATE_DURATION = 800; // ms
+
+      map.on("load", () => {
+        // Insert the layer beneath any symbol layer.
+        const layers = map.getStyle().layers;
+
+        let labelLayerId;
+        for (let i = 0; i < layers.length; i++) {
+          if (layers[i].type === "symbol" && layers[i].layout["text-field"]) {
+            labelLayerId = layers[i].id;
+            break;
+          }
+        }
+
+        for (let i = 0; i < MAX_HEIGHT; i++) {
+          map.addLayer(
+            {
+              id: `3d-buildings-${i}`,
+              source: "openmaptiles",
+              "source-layer": "building",
+              filter: ["==", "render_height", i],
+              type: "fill-extrusion",
+              minzoom: MIN_ZOOM,
+              paint: {
+                "fill-extrusion-color": "royalblue",
+                "fill-extrusion-height": 0,
+              },
+            },
+            labelLayerId
+          );
+        }
+
+        map.on("idle", animateExtrusion);
+        map.on("moveend", resetExtrusion);
+
+        function animateExtrusion() {
+          //   console.log("idle");
+          const zoom = map.getZoom();
+          if (zoom >= MIN_ZOOM) {
+            for (let i = 0; i < MAX_HEIGHT; i++) {
+              map.setPaintProperty(
+                `3d-buildings-${i}`,
+                "fill-extrusion-height",
+                i
+              );
+              map.setPaintProperty(
+                `3d-buildings-${i}`,
+                "fill-extrusion-height-transition",
+                {
+                  duration: ANIMATE_DURATION,
+                  delay: 0,
+                }
+              );
+              map.setPaintProperty(
+                `3d-buildings-${i}`,
+                "fill-extrusion-opacity",
+                1
+              );
+            }
+          }
+        }
+
+        function resetExtrusion() {
+          //   console.log("moveend");
+          const zoom = map.getZoom();
+          document.getElementById(
+            "zoom-level"
+          ).innerText = `Zoom level: ${zoom.toFixed(1)}`;
+          if (zoom < MIN_ZOOM) {
+            for (let i = 0; i < MAX_HEIGHT; i++) {
+              map.setPaintProperty(
+                `3d-buildings-${i}`,
+                "fill-extrusion-height",
+                0
+              );
+              map.setPaintProperty(
+                `3d-buildings-${i}`,
+                "fill-extrusion-height-transition",
+                {
+                  duration: 0,
+                  delay: 0,
+                }
+              );
+              map.setPaintProperty(
+                `3d-buildings-${i}`,
+                "fill-extrusion-opacity",
+                0
+              );
+            }
+          }
+        }
+      });
+    </script>
+  </body>
+</html>
