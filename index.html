@@ -48,7 +48,7 @@
           "https://map.vizualtravel.com/styles/osm-bright-gl-style/style.json",
         center: [-74.009, 40.7128],
         zoom: 13.5,
-        pitch: 30,
+        pitch: 50,
       });
 
       const MAX_HEIGHT = 850;
@@ -85,63 +85,81 @@
           );
         }
 
-        map.on("idle", animateExtrusion);
-        map.on("moveend", resetExtrusion);
-
-        function animateExtrusion() {
-          //   console.log("idle");
-          const zoom = map.getZoom();
-          if (zoom >= MIN_ZOOM) {
-            for (let i = 0; i < MAX_HEIGHT; i++) {
-              map.setPaintProperty(
-                `3d-buildings-${i}`,
-                "fill-extrusion-height",
-                i
-              );
-              map.setPaintProperty(
-                `3d-buildings-${i}`,
-                "fill-extrusion-height-transition",
-                {
-                  duration: ANIMATE_DURATION,
-                  delay: 0,
-                }
-              );
-              map.setPaintProperty(
-                `3d-buildings-${i}`,
-                "fill-extrusion-opacity",
-                1
-              );
-            }
-          }
-        }
-
-        function resetExtrusion() {
-          //   console.log("moveend");
+        let t = 0;
+        map.on("moveend", () => {
           const zoom = map.getZoom();
           document.getElementById(
             "zoom-level"
           ).innerText = `Zoom level: ${zoom.toFixed(1)}`;
-          if (zoom < MIN_ZOOM) {
-            for (let i = 0; i < MAX_HEIGHT; i++) {
-              map.setPaintProperty(
-                `3d-buildings-${i}`,
-                "fill-extrusion-height",
-                0
-              );
-              map.setPaintProperty(
-                `3d-buildings-${i}`,
-                "fill-extrusion-height-transition",
-                {
-                  duration: 0,
-                  delay: 0,
-                }
-              );
-              map.setPaintProperty(
-                `3d-buildings-${i}`,
-                "fill-extrusion-opacity",
-                0
-              );
+          if (map.isSourceLoaded("openmaptiles")) {
+            t = 0;
+            if (zoom >= MIN_ZOOM) {
+              animateExtrusion(1);
             }
+          } else {
+            if (zoom < MIN_ZOOM) {
+              resetExtrusion();
+            }
+          }
+        });
+
+        map.on("sourcedata", () => {
+          const zoom = map.getZoom();
+          if (zoom >= MIN_ZOOM) {
+            if (map.isSourceLoaded("openmaptiles")) {
+              animateExtrusion(1);
+            } else {
+              t += 0.02;
+              if (t < 1) {
+                animateExtrusion(t);
+              }
+            }
+          }
+        });
+
+        function animateExtrusion(rate) {
+          for (let i = 0; i < MAX_HEIGHT; i++) {
+            map.setPaintProperty(
+              `3d-buildings-${i}`,
+              "fill-extrusion-height",
+              i * rate
+            );
+            map.setPaintProperty(
+              `3d-buildings-${i}`,
+              "fill-extrusion-height-transition",
+              {
+                duration: ANIMATE_DURATION,
+                delay: 0,
+              }
+            );
+            map.setPaintProperty(
+              `3d-buildings-${i}`,
+              "fill-extrusion-opacity",
+              1 * rate
+            );
+          }
+        }
+
+        function resetExtrusion() {
+          for (let i = 0; i < MAX_HEIGHT; i++) {
+            map.setPaintProperty(
+              `3d-buildings-${i}`,
+              "fill-extrusion-height",
+              0
+            );
+            map.setPaintProperty(
+              `3d-buildings-${i}`,
+              "fill-extrusion-height-transition",
+              {
+                duration: 0,
+                delay: 0,
+              }
+            );
+            map.setPaintProperty(
+              `3d-buildings-${i}`,
+              "fill-extrusion-opacity",
+              0.5
+            );
           }
         }
       });
