@@ -68,8 +68,7 @@
       let t1 = 0, // movestart
         t2 = 0, // tile load start
         t3 = 0, // tile load end
-        t4 = 0, // 3d-buildings-source end
-        t5 = 0; // 3d-buildings render end
+        t4 = 0; // 3d-buildings-source end
 
       let timeout_1 = null,
         timeout_2 = null;
@@ -168,17 +167,18 @@
         function updateBuildingSource() {
           if (timeout_1) clearTimeout(timeout_1);
           timeout_1 = setTimeout(() => {
-            const tileFeatures = map
-              .querySourceFeatures("carto", {
-                sourceLayer: "building",
-              })
-              .map((item) => {
-                return {
-                  type: "Feature",
-                  geometry: item.geometry,
-                  properties: { ...item.properties, tile: item.tile },
-                };
-              });
+            const tileFeatures = map.querySourceFeatures("carto", {
+              sourceLayer: "building",
+            });
+            // .map((item) => {
+            //   return {
+            //     type: "Feature",
+            //     geometry: item.geometry,
+            //     properties: { ...item.properties, tile: item.tile },
+            //   };
+            // });
+
+            // console.log(tileFeatures);
 
             // get center of map screen
 
@@ -200,7 +200,7 @@
             let tiles = {};
             tileFeatures.forEach((tileFeature) => {
               // get tile
-              let tile = tileFeature.properties.tile;
+              let tile = tileFeature.tile;
               let tile_key = `${tile.z}-${tile.x}-${tile.y}`;
               if (!tiles[tile_key]) {
                 tiles[tile_key] = 1;
@@ -285,7 +285,7 @@
               `3d-buildings-${i}`,
               "fill-extrusion-height-transition",
               {
-                duration: ANIMATE_DURATION,
+                duration: 0,
                 delay: 0,
               }
             );
