@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <title>3D-Building-Animation</title>
+    <meta
+      property="og:description"
+      content="Add an icon to the map from an external URL and use it in a symbol layer."
+    />
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/maplibre-gl@3.5.2/dist/maplibre-gl.css"
+    />
+    <script src="https://unpkg.com/maplibre-gl@3.5.2/dist/maplibre-gl.js"></script>
+    <style>
+      body {
+        margin: 0;
+        padding: 0;
+      }
+
+      html,
+      body,
+      #map {
+        height: 100%;
+      }
+
+      .map-overlay {
+        position: absolute;
+        top: 10px;
+        left: 10px;
+        background: rgba(255, 255, 255, 0.7);
+        padding: 5px;
+        border-radius: 3px;
+        font-size: 16px;
+      }
+    </style>
+  </head>
+
+  <body>
+    <div id="map"></div>
+    <div class="map-overlay">
+      <div id="zoom-level"></div>
+      <div id="building-start"></div>
+      <div id="building-end"></div>
+    </div>
+
+    <script>
+      const map = new maplibregl.Map({
+        container: "map",
+        style:
+          "https://map.vizualtravel.com/styles/osm-bright-gl-style/style.json",
+        center: [-74.009, 40.7128],
+        zoom: 13.5,
+        pitch: 50,
+      });
+
+      const MAX_HEIGHT = 850;
+      const MIN_ZOOM = 14;
+      const ANIMATE_DURATION = 800; // ms
+
+      let t1 = 0,
+        t2 = 0,
+        t3 = 0;
+
+      map.on("load", () => {
+        // Insert the layer beneath any symbol layer.
+        const layers = map.getStyle().layers;
+
+        let labelLayerId;
+        for (let i = 0; i < layers.length; i++) {
+          if (layers[i].type === "symbol" && layers[i].layout["text-field"]) {
+            labelLayerId = layers[i].id;
+            break;
+          }
+        }
+
+        for (let i = 0; i < MAX_HEIGHT; i++) {
+          map.addLayer(
+            {
+              id: `3d-buildings-${i}`,
+              source: "openmaptiles",
+              "source-layer": "building",
+              filter: ["==", "render_height", i],
+              type: "fill-extrusion",
+              minzoom: MIN_ZOOM,
+              paint: {
+                "fill-extrusion-color": "#eee",
+                "fill-extrusion-height": 0,
+              },
+            },
+            labelLayerId
+          );
+        }
+
+        let t = 0;
+        map.on("moveend", () => {
+          const zoom = map.getZoom();
+          document.getElementById(
+            "zoom-level"
+          ).innerText = `Zoom level: ${zoom.toFixed(1)}`;
+          t = 0;
+          t1 = new Date().getTime();
+          t2 = 0;
+          t3 = 0;
+          document.getElementById(
+            "building-start"
+          ).innerText = `Building start: 0 s`;
+          document.getElementById(
+            "building-end"
+          ).innerText = `Building end: 0 s`;
+          if (zoom >= MIN_ZOOM) {
+            if (map.isSourceLoaded("openmaptiles")) {
+              animateExtrusion(1);
+            }
+          } else {
+            resetExtrusion();
+          }
+        });
+
+        map.on("sourcedata", (event) => {
+          // console.log(event);
+          const zoom = map.getZoom();
+          if (zoom >= MIN_ZOOM) {
+            if (map.isSourceLoaded("openmaptiles")) {
+              t3 = new Date().getTime();
+              document.getElementById(
+                "building-end"
+              ).innerText = `Building end: ${(t3 - t1) / 1000} s`;
+              animateExtrusion(1);
+            } else {
+              if (t2 === 0) {
+                t2 = new Date().getTime();
+                document.getElementById(
+                  "building-start"
+                ).innerText = `Building start: ${(t2 - t1) / 1000} s`;
+              }
+
+              t += 0.02;
+              if (t < 1) {
+                animateExtrusion(t);
+              }
+            }
+          }
+        });
+
+        function animateExtrusion(rate) {
+          for (let i = 0; i < MAX_HEIGHT; i++) {
+            map.setPaintProperty(
+              `3d-buildings-${i}`,
+              "fill-extrusion-height",
+              i * rate
+            );
+            map.setPaintProperty(
+              `3d-buildings-${i}`,
+              "fill-extrusion-height-transition",
+              {
+                duration: ANIMATE_DURATION,
+                delay: 0,
+              }
+            );
+            map.setPaintProperty(
+              `3d-buildings-${i}`,
+              "fill-extrusion-opacity",
+              1 * rate
+            );
+          }
+        }
+
+        function resetExtrusion() {
+          for (let i = 0; i < MAX_HEIGHT; i++) {
+            map.setPaintProperty(
+              `3d-buildings-${i}`,
+              "fill-extrusion-height",
+              0
+            );
+            map.setPaintProperty(
+              `3d-buildings-${i}`,
+              "fill-extrusion-height-transition",
+              {
+                duration: 0,
+                delay: 0,
+              }
+            );
+            map.setPaintProperty(
+              `3d-buildings-${i}`,
+              "fill-extrusion-opacity",
+              0
+            );
+          }
+        }
+      });
+    </script>
+  </body>
+</html>

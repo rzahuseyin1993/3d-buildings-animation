@@ -13,6 +13,7 @@
       href="https://unpkg.com/maplibre-gl@3.5.2/dist/maplibre-gl.css"
     />
     <script src="https://unpkg.com/maplibre-gl@3.5.2/dist/maplibre-gl.js"></script>
+    <script src="https://unpkg.com/@turf/turf@6/turf.min.js"></script>
     <style>
       body {
         margin: 0;
@@ -41,17 +42,18 @@
     <div id="map"></div>
     <div class="map-overlay">
       <div id="zoom-level"></div>
-      <div id="building-start"></div>
-      <div id="building-end"></div>
+      <div id="tile-start"></div>
+      <div id="tile-end"></div>
+      <div id="building-update"></div>
+      <div id="tiles"></div>
     </div>
 
     <script>
       const map = new maplibregl.Map({
         container: "map",
-        style:
-          "https://map.vizualtravel.com/styles/osm-bright-gl-style/style.json",
+        style: "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
         center: [-74.009, 40.7128],
-        zoom: 13.5,
+        zoom: 14,
         pitch: 50,
       });
 
@@ -59,62 +61,66 @@
       const MIN_ZOOM = 14;
       const ANIMATE_DURATION = 800; // ms
 
-      let t1 = 0,
-        t2 = 0,
-        t3 = 0;
+      let isMoveEnd = false;
+
+      let tile_load_times = {};
+
+      let t1 = 0, // movestart
+        t2 = 0, // tile load start
+        t3 = 0, // tile load end
+        t4 = 0, // 3d-buildings-source end
+        t5 = 0; // 3d-buildings render end
+
+      let timeout_1 = null,
+        timeout_2 = null;
 
       map.on("load", () => {
+        map.addSource("3d-buildings-source", {
+          type: "geojson",
+          data: {
+            type: "FeatureCollection",
+            features: [],
+          },
+        });
+
         // Insert the layer beneath any symbol layer.
         const layers = map.getStyle().layers;
 
-        let labelLayerId;
-        for (let i = 0; i < layers.length; i++) {
-          if (layers[i].type === "symbol" && layers[i].layout["text-field"]) {
-            labelLayerId = layers[i].id;
-            break;
-          }
-        }
-
         for (let i = 0; i < MAX_HEIGHT; i++) {
-          map.addLayer(
-            {
-              id: `3d-buildings-${i}`,
-              source: "openmaptiles",
-              "source-layer": "building",
-              filter: ["==", "render_height", i],
-              type: "fill-extrusion",
-              minzoom: MIN_ZOOM,
-              paint: {
-                "fill-extrusion-color": "#eee",
-                "fill-extrusion-height": 0,
-              },
+          map.addLayer({
+            id: `3d-buildings-${i}`,
+            source: "3d-buildings-source",
+            filter: ["==", "render_height", i],
+            type: "fill-extrusion",
+            minzoom: MIN_ZOOM,
+            paint: {
+              "fill-extrusion-color": "#eee",
+              "fill-extrusion-height": 0,
             },
-            labelLayerId
-          );
+          });
         }
 
-        let t = 0;
+        map.on("movestart", () => {
+          isMoveEnd = false;
+          t1 = new Date().getTime();
+          t2 = 0;
+          t3 = 0;
+          t4 = 0;
+          document.getElementById(
+            "tile-start"
+          ).innerText = `Tile load start: 0 s`;
+          document.getElementById("tile-end").innerText = `Tile load end: 0 s`;
+        });
+
         map.on("moveend", () => {
+          // console.log("moveend");
+          isMoveEnd = true;
           const zoom = map.getZoom();
           document.getElementById(
             "zoom-level"
           ).innerText = `Zoom level: ${zoom.toFixed(1)}`;
-          t = 0;
-          t1 = new Date().getTime();
-          t2 = 0;
-          t3 = 0;
-          document.getElementById(
-            "building-start"
-          ).innerText = `Building start: 0 s`;
-          document.getElementById(
-            "building-end"
-          ).innerText = `Building end: 0 s`;
-          if (zoom >= MIN_ZOOM) {
-            if (map.isSourceLoaded("openmaptiles")) {
-              animateExtrusion(1);
-            }
-          } else {
-            resetExtrusion();
+          if (map.isSourceLoaded("carto")) {
+            updateBuildingSource();
           }
         });
 
@@ -122,34 +128,135 @@
           // console.log(event);
           const zoom = map.getZoom();
           if (zoom >= MIN_ZOOM) {
-            if (map.isSourceLoaded("openmaptiles")) {
-              t3 = new Date().getTime();
-              document.getElementById(
-                "building-end"
-              ).innerText = `Building end: ${(t3 - t1) / 1000} s`;
-              animateExtrusion(1);
-            } else {
-              if (t2 === 0) {
-                t2 = new Date().getTime();
+            if (event.sourceId === "carto") {
+              if (map.isSourceLoaded("carto")) {
+                t3 = new Date().getTime();
                 document.getElementById(
-                  "building-start"
-                ).innerText = `Building start: ${(t2 - t1) / 1000} s`;
+                  "tile-end"
+                ).innerText = `Tile load end: ${(t3 - t1) / 1000} s`;
+                if (isMoveEnd) {
+                  isMoveEnd = false;
+                  updateBuildingSource();
+                }
+              } else {
+                if (t2 === 0) {
+                  t2 = new Date().getTime();
+                  document.getElementById(
+                    "tile-start"
+                  ).innerText = `Tile load start: ${(t2 - t1) / 1000} s`;
+                }
               }
-
-              t += 0.02;
-              if (t < 1) {
-                animateExtrusion(t);
+            } else if (event.sourceId === "3d-buildings-source") {
+              if (map.isSourceLoaded("3d-buildings-source")) {
+                t4 = new Date().getTime();
+                document.getElementById(
+                  "building-update"
+                ).innerText = `Building update: ${(t4 - t1) / 1000} s`;
               }
             }
+          } else {
+            document.getElementById("tiles").innerHTML = "";
           }
         });
 
-        function animateExtrusion(rate) {
+        map.on("idle", (event) => {
+          // console.log("idle");
+
+          animateExtrusion();
+        });
+
+        function updateBuildingSource() {
+          if (timeout_1) clearTimeout(timeout_1);
+          timeout_1 = setTimeout(() => {
+            const tileFeatures = map
+              .querySourceFeatures("carto", {
+                sourceLayer: "building",
+              })
+              .map((item) => {
+                return {
+                  type: "Feature",
+                  geometry: item.geometry,
+                  properties: { ...item.properties, tile: item.tile },
+                };
+              });
+
+            // get center of map screen
+
+            const center = map.getCenter().toArray();
+
+            // get radius by current zoom of map
+
+            const radius = Math.max(30000 / Math.pow(2, map.getZoom(), 0.1));
+
+            // create circle from center and radius
+
+            const circle = turf.circle(center, radius, {
+              steps: 32,
+              units: "kilometers",
+            });
+
+            // find buildings in circle
+            let features = [];
+            let tiles = {};
+            tileFeatures.forEach((tileFeature) => {
+              // get tile
+              let tile = tileFeature.properties.tile;
+              let tile_key = `${tile.z}-${tile.x}-${tile.y}`;
+              if (!tiles[tile_key]) {
+                tiles[tile_key] = 1;
+              }
+              // check intersect between circle and tile feature
+              if (tileFeature.geometry.type === "MultiPolygon") {
+                for (
+                  let i = 0;
+                  i < tileFeature.geometry.coordinates.length;
+                  i++
+                ) {
+                  let intersect = turf.intersect(circle, {
+                    type: "Feature",
+                    geometry: {
+                      type: "Polygon",
+                      coordinates: tileFeature.geometry.coordinates[i],
+                    },
+                  });
+                  if (intersect) {
+                    features.push({
+                      type: "Feature",
+                      geometry: {
+                        type: "Polygon",
+                        coordinates: tileFeature.geometry.coordinates[i],
+                      },
+                      properties: tileFeature.properties,
+                    });
+                  }
+                }
+              } else {
+                let intersect = turf.intersect(circle, tileFeature);
+                if (intersect) {
+                  features.push(tileFeature);
+                }
+              }
+            });
+            document.getElementById("tiles").innerHTML = [
+              "<div>Tiles</div>",
+              ...Object.keys(tiles).map((item) => {
+                return `<div>${item}</div>`;
+              }),
+            ].join("");
+            resetExtrusion();
+            map.getSource("3d-buildings-source").setData({
+              type: "FeatureCollection",
+              features: features,
+            });
+          }, 500);
+        }
+
+        function animateExtrusion() {
           for (let i = 0; i < MAX_HEIGHT; i++) {
             map.setPaintProperty(
               `3d-buildings-${i}`,
               "fill-extrusion-height",
-              i * rate
+              i
             );
             map.setPaintProperty(
               `3d-buildings-${i}`,
@@ -162,7 +269,7 @@
             map.setPaintProperty(
               `3d-buildings-${i}`,
               "fill-extrusion-opacity",
-              1 * rate
+              1
             );
           }
         }
@@ -178,7 +285,7 @@
               `3d-buildings-${i}`,
               "fill-extrusion-height-transition",
               {
-                duration: 0,
+                duration: ANIMATE_DURATION,
                 delay: 0,
               }
             );
