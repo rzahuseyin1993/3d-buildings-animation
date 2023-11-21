@@ -45,6 +45,7 @@
       <div id="tile-start"></div>
       <div id="tile-end"></div>
       <div id="building-update"></div>
+      <div id="tiles"></div>
     </div>
 
     <script>
@@ -52,17 +53,16 @@
         container: "map",
         style: "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
         center: [-74.009, 40.7128],
-        zoom: 16,
+        zoom: 15,
         pitch: 50,
       });
-
-      map.showTileBoundaries = true;
 
       const MAX_HEIGHT = 850;
       const MIN_ZOOM = 14;
       const ANIMATE_DURATION = 800; // ms
 
       let isMoveEnd = false;
+      let tile_load_times = {};
       let t1 = 0,
         t2 = 0,
         t3 = 0,
@@ -70,14 +70,6 @@
       let timeout = null;
 
       map.on("load", () => {
-        map.addSource("tile-grid-source", {
-          type: "geojson",
-          data: {
-            type: "FeatureCollection",
-            features: [],
-          },
-        });
-
         map.addSource("3d-buildings-source", {
           type: "geojson",
           data: {
@@ -85,6 +77,8 @@
             features: [],
           },
         });
+
+        const layers = map.getStyle().layers;
 
         for (let i = 0; i < MAX_HEIGHT; i++) {
           map.addLayer({
@@ -113,7 +107,7 @@
           document.getElementById("tile-end").innerText = `Tile load end: 0 s`;
         });
 
-        map.on("moveend", (event) => {
+        map.on("moveend", () => {
           isMoveEnd = true;
           const zoom = map.getZoom();
           document.getElementById(
@@ -125,34 +119,36 @@
         });
 
         map.on("sourcedata", (event) => {
-          if (event.sourceId === "carto") {
-            if (map.isSourceLoaded("carto")) {
-              t3 = new Date().getTime();
-              document.getElementById("tile-end").innerText = `Tile load end: ${
-                (t3 - t1) / 1000
-              } s`;
-              const zoom = map.getZoom();
-              if (zoom >= MIN_ZOOM) {
+          const zoom = map.getZoom();
+          if (zoom >= MIN_ZOOM) {
+            if (event.sourceId === "carto") {
+              if (map.isSourceLoaded("carto")) {
+                t3 = new Date().getTime();
+                document.getElementById(
+                  "tile-end"
+                ).innerText = `Tile load end: ${(t3 - t1) / 1000} s`;
                 if (isMoveEnd) {
                   isMoveEnd = false;
                   updateBuildingSource();
                 }
+              } else {
+                if (t2 === 0) {
+                  t2 = new Date().getTime();
+                  document.getElementById(
+                    "tile-start"
+                  ).innerText = `Tile load start: ${(t2 - t1) / 1000} s`;
+                }
               }
-            } else {
-              if (t2 === 0) {
-                t2 = new Date().getTime();
+            } else if (event.sourceId === "3d-buildings-source") {
+              if (map.isSourceLoaded("3d-buildings-source")) {
+                t4 = new Date().getTime();
                 document.getElementById(
-                  "tile-start"
-                ).innerText = `Tile load start: ${(t2 - t1) / 1000} s`;
+                  "building-update"
+                ).innerText = `Building update: ${(t4 - t1) / 1000} s`;
               }
             }
-          } else if (event.sourceId === "3d-buildings-source") {
-            if (map.isSourceLoaded("3d-buildings-source")) {
-              t4 = new Date().getTime();
-              document.getElementById(
-                "building-update"
-              ).innerText = `Building update: ${(t4 - t1) / 1000} s`;
-            }
+          } else {
+            document.getElementById("tiles").innerHTML = "";
           }
         });
 
@@ -163,10 +159,10 @@
         function updateBuildingSource() {
           if (timeout) clearTimeout(timeout);
           timeout = setTimeout(() => {
-            // console.log(map.getStyle());
             const tileFeatures = map.querySourceFeatures("carto", {
               sourceLayer: "building",
             });
+
             const center = map.getCenter().toArray();
             const radius = Math.max(30000 / Math.pow(2, map.getZoom(), 0.1));
             const circle = turf.circle(center, radius, {
@@ -175,7 +171,13 @@
             });
 
             let features = [];
+            let tiles = {};
             tileFeatures.forEach((tileFeature) => {
+              let tile = tileFeature.tile;
+              let tile_key = `${tile.z}-${tile.x}-${tile.y}`;
+              if (!tiles[tile_key]) {
+                tiles[tile_key] = 1;
+              }
               if (tileFeature.geometry.type === "MultiPolygon") {
                 for (
                   let i = 0;
@@ -207,6 +209,12 @@
                 }
               }
             });
+            document.getElementById("tiles").innerHTML = [
+              "<div>Tiles</div>",
+              ...Object.keys(tiles).map((item) => {
+                return `<div>${item}</div>`;
+              }),
+            ].join("");
             resetExtrusion();
             map.getSource("3d-buildings-source").setData({
               type: "FeatureCollection",
