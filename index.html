@@ -52,7 +52,7 @@
         container: "map",
         style: "https://basemaps.cartocdn.com/gl/positron-gl-style/style.json",
         center: [-74.009, 40.7128],
-        zoom: 16,
+        zoom: 17,
         pitch: 50,
       });
 
@@ -68,37 +68,13 @@
         t3 = 0,
         t4 = 0;
       let timeout = null;
+      let update_count = 0;
+      let isAnimated = false;
 
       map.on("load", () => {
-        map.addSource("tile-grid-source", {
-          type: "geojson",
-          data: {
-            type: "FeatureCollection",
-            features: [],
-          },
-        });
+        t1 = new Date().getTime();
 
-        map.addSource("3d-buildings-source", {
-          type: "geojson",
-          data: {
-            type: "FeatureCollection",
-            features: [],
-          },
-        });
-
-        for (let i = 0; i < MAX_HEIGHT; i++) {
-          map.addLayer({
-            id: `3d-buildings-${i}`,
-            source: "3d-buildings-source",
-            filter: ["==", "render_height", i],
-            type: "fill-extrusion",
-            minzoom: MIN_ZOOM,
-            paint: {
-              "fill-extrusion-color": "#eee",
-              "fill-extrusion-height": 0,
-            },
-          });
-        }
+        updateBuildingSource();
 
         map.on("movestart", () => {
           isMoveEnd = false;
@@ -106,6 +82,8 @@
           t2 = 0;
           t3 = 0;
           t4 = 0;
+
+          if (timeout) clearTimeout(timeout);
 
           document.getElementById(
             "tile-start"
@@ -146,8 +124,8 @@
                 ).innerText = `Tile load start: ${(t2 - t1) / 1000} s`;
               }
             }
-          } else if (event.sourceId === "3d-buildings-source") {
-            if (map.isSourceLoaded("3d-buildings-source")) {
+          } else if (event.sourceId === `building-${update_count}`) {
+            if (map.isSourceLoaded(`building-${update_count}`)) {
               t4 = new Date().getTime();
               document.getElementById(
                 "building-update"
@@ -157,7 +135,30 @@
         });
 
         map.on("idle", (event) => {
-          animateExtrusion();
+          if (isAnimated) return;
+          if (update_count > 2) {
+            for (let i = 0; i < update_count - 1; i++) {
+              if (map.getSource(`building-${i}`)) {
+                removeBuildingLayers(`building-${i}`);
+                map.removeSource(`building-${i}`);
+              }
+            }
+          }
+          if (map.getSource(`building-${update_count}`)) {
+            isAnimated = true;
+            animateExtrusion(`building-${update_count}`);
+            setTimeout(() => {
+              if (map.getSource(`building-${update_count - 1}`)) {
+                resetExtrusion(`building-${update_count - 1}`);
+              }
+            }, ANIMATE_DURATION);
+            setTimeout(() => {
+              if (map.getSource(`building-${update_count - 1}`)) {
+                removeBuildingLayers(`building-${update_count - 1}`);
+                map.removeSource(`building-${update_count - 1}`);
+              }
+            }, 2 * ANIMATE_DURATION);
+          }
         });
 
         function updateBuildingSource() {
@@ -207,55 +208,68 @@
                 }
               }
             });
-            resetExtrusion();
-            map.getSource("3d-buildings-source").setData({
-              type: "FeatureCollection",
-              features: features,
+            update_count++;
+            isAnimated = false;
+            map.addSource(`building-${update_count}`, {
+              type: "geojson",
+              data: {
+                type: "FeatureCollection",
+                features: features,
+              },
             });
+            addBuildingLayers(`building-${update_count}`);
           }, 500);
         }
 
-        function animateExtrusion() {
+        function addBuildingLayers(source_name) {
+          for (let i = 0; i < MAX_HEIGHT; i++) {
+            map.addLayer({
+              id: `${source_name}-layer-${i}`,
+              source: source_name,
+              filter: ["==", "render_height", i],
+              type: "fill-extrusion",
+              minzoom: MIN_ZOOM,
+              paint: {
+                "fill-extrusion-color": "#eee",
+                "fill-extrusion-height": 0,
+                "fill-extrusion-height-transition": {
+                  duration: ANIMATE_DURATION,
+                  delay: 0,
+                },
+                "fill-extrusion-opacity": 0,
+              },
+            });
+          }
+        }
+
+        function removeBuildingLayers(source_name) {
+          for (let i = 0; i < MAX_HEIGHT; i++) {
+            if (map.getLayer(`${source_name}-layer-${i}`)) {
+              map.removeLayer(`${source_name}-layer-${i}`);
+            }
+          }
+        }
+
+        function animateExtrusion(source_name) {
           for (let i = 0; i < MAX_HEIGHT; i++) {
             map.setPaintProperty(
-              `3d-buildings-${i}`,
+              `${source_name}-layer-${i}`,
               "fill-extrusion-height",
               i
             );
             map.setPaintProperty(
-              `3d-buildings-${i}`,
-              "fill-extrusion-height-transition",
-              {
-                duration: ANIMATE_DURATION,
-                delay: 0,
-              }
-            );
-            map.setPaintProperty(
-              `3d-buildings-${i}`,
+              `${source_name}-layer-${i}`,
               "fill-extrusion-opacity",
               1
             );
           }
         }
 
-        function resetExtrusion() {
+        function resetExtrusion(source_name) {
           for (let i = 0; i < MAX_HEIGHT; i++) {
             map.setPaintProperty(
-              `3d-buildings-${i}`,
+              `${source_name}-layer-${i}`,
               "fill-extrusion-height",
-              0
-            );
-            map.setPaintProperty(
-              `3d-buildings-${i}`,
-              "fill-extrusion-height-transition",
-              {
-                duration: 0,
-                delay: 0,
-              }
-            );
-            map.setPaintProperty(
-              `3d-buildings-${i}`,
-              "fill-extrusion-opacity",
               0
             );
           }
